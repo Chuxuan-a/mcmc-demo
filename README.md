@@ -15,9 +15,9 @@ Click on an algorithm below to view an interactive demo where you can change alg
 *   [Hessian-Hamiltonian Monte Carlo (H2MC)](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=H2MC&target=banana) [[4]](#ref-4)
 *   [Gibbs Sampling](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=GibbsSampling&target=banana)
 *   [DE-MCMC-Z](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=DE-MCMC-Z&target=banana) [[7]](#ref-7)
-*   [Repelling-Attracting Hamiltonian Monte Carlo (RAHMC)](app.html?algorithm=RAHMC&target=banana) [[8]](#ref-8)
-*   [RAHMC with Tanh Friction Schedule](app.html?algorithm=RAHMC-Tanh&target=banana) [[8]](#ref-8)
-*   [RAHMC with Sigmoid Friction Schedule](app.html?algorithm=RAHMC-Sigmoid&target=banana) [[8]](#ref-8)
+*   [Repelling-Attracting Hamiltonian Monte Carlo (RAHMC)](https://chuxuan-a.github.io/mcmc-demo/app.html?algorithm=RAHMC&target=banana) [[8]](#ref-8)
+*   [RAHMC with Tanh Friction Schedule](https://chuxuan-a.github.io/mcmc-demo/app.html?algorithm=RAHMC-Tanh&target=banana) [[8]](#ref-8)
+*   [RAHMC with Sigmoid Friction Schedule](https://chuxuan-a.github.io/mcmc-demo/app.html?algorithm=RAHMC-Sigmoid&target=banana) [[8]](#ref-8)
 
 ### Non-Markovian iterative sampling methods
 *   [Stein Variational Gradient Descent (SVGD)](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=SVGD&target=banana&delay=0) [[5]](#ref-5)
