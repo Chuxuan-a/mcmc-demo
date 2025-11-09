@@ -15,6 +15,9 @@ Click on an algorithm below to view an interactive demo where you can change alg
 *   [Hessian-Hamiltonian Monte Carlo (H2MC)](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=H2MC&target=banana) [[4]](#ref-4)
 *   [Gibbs Sampling](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=GibbsSampling&target=banana)
 *   [DE-MCMC-Z](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=DE-MCMC-Z&target=banana) [[7]](#ref-7)
+*   [Repelling-Attracting Hamiltonian Monte Carlo (RAHMC)](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=RAHMC&target=banana) [[8]](#ref-8)
+*   [RAHMC with Tanh Friction Schedule](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=RAHMC-Tanh&target=banana) [[8]](#ref-8)
+*   [RAHMC with Sigmoid Friction Schedule](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=RAHMC-Sigmoid&target=banana) [[8]](#ref-8)
 
 ### Non-Markovian iterative sampling methods
 *   [Stein Variational Gradient Descent (SVGD)](https://chi-feng.github.io/mcmc-demo/app.html?algorithm=SVGD&target=banana&delay=0) [[5]](#ref-5)
@@ -35,6 +38,8 @@ Click on an algorithm below to view an interactive demo where you can change alg
 [6] J. Buchner [A statistical test for Nested Sampling algorithms](https://arxiv.org/abs/1407.5459) Statistics and Computing. 2014.
 
 [7] Cajo J. F. ter Braak & Jasper A. Vrugt [Differential Evolution Markov Chain with snooker updater and fewer chains](https://link.springer.com/article/10.1007/s11222-008-9104-9) Statistics and Computing. 2008.
+
+[8] Siddharth Vishwanath, Hyungsuk Tak. [Repelling-Attracting Hamiltonian Monte Carlo](https://arxiv.org/abs/2403.04607v1) arXiv preprint. 2024.
 
 ### Running locally
 Clone or download the repository and open `index.html` in your web browser. All dependencies are included in in `lib/`.
