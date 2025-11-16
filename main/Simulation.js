@@ -11,6 +11,7 @@ class Simulation {
     this.delay = 250;
     this.tweeningDelay = 0;
     this.autoplay = true;
+    this.phaseSpaceMode = false; // Set to true when using 1D target
   }
   setAlgorithm(algorithmName) {
     console.log("Setting algorithm to " + algorithmName);
@@ -38,10 +39,17 @@ class Simulation {
     this.mcmc.logDensity = MCMC.targets[targetName].logDensity;
     this.mcmc.gradLogDensity = MCMC.targets[targetName].gradLogDensity;
 
+    // Detect 1D target and enable phase space mode
+    const targetDim = MCMC.targets[targetName].dim || 2;
+    this.mcmc.dim = targetDim;
+    this.phaseSpaceMode = targetDim === 1;
+    console.log("Phase space mode:", this.phaseSpaceMode, "dim:", targetDim);
+
     // update visualizer extents
     const options = { ...MCMC.targets[targetName] };
     this.visualizer.xmin = options.xmin;
     this.visualizer.xmax = options.xmax;
+    this.visualizer.setPhaseSpaceMode(this.phaseSpaceMode);
     this.visualizer.resize();
 
     // TODO: actually derive Hessians
@@ -62,7 +70,7 @@ class Simulation {
       return hess;
     };
 
-    // update contours
+    // update contours or 1D density
     const xmin = this.visualizer.xmin;
     const xmax = this.visualizer.xmax;
     const ymin = this.visualizer.ymin;
@@ -71,7 +79,13 @@ class Simulation {
     const nx = 480,
       ny = 256,
       nz = 7;
-    this.computeContours(this.mcmc.logDensity, xmin, xmax, ymin, ymax, nx, ny, nz);
+
+    if (this.phaseSpaceMode && targetDim === 1) {
+      this.compute1DDensity(this.mcmc.logDensity, xmin, xmax, nx);
+      this.computeHamiltonianContours(this.mcmc.logDensity, xmin, xmax, this.visualizer.pmin, this.visualizer.pmax, nx, 256, 7);
+    } else {
+      this.computeContours(this.mcmc.logDensity, xmin, xmax, ymin, ymax, nx, ny, nz);
+    }
 
     if (this.mcmc.initialized) this.mcmc.reset(this.mcmc);
     if (this.hasAlgorithm && this.hasTarget) {
@@ -80,6 +94,71 @@ class Simulation {
       this.mcmc.initialized = true;
       this.visualizer.resize();
     }
+  }
+  compute1DDensity(logDensity, xmin, xmax, nx) {
+    // Compute 1D density for visualization
+    var x = linspace(xmin, xmax, nx);
+    var densityValues = zeros(nx);
+    var point = zeros(1, 1);
+
+    for (let i = 0; i < nx; ++i) {
+      point[0] = x[i];
+      densityValues[i] = Math.exp(logDensity(point));
+    }
+
+    this.mcmc.xgrid = x;
+    this.mcmc.density1d = densityValues;
+
+    // Compute marginal (for 1D, marginal is just normalized density)
+    var maxDensity = 0;
+    for (let i = 0; i < nx; ++i) {
+      if (densityValues[i] > maxDensity) maxDensity = densityValues[i];
+    }
+    var marginal = zeros(nx);
+    for (let i = 0; i < nx; ++i) {
+      marginal[i] = densityValues[i] / maxDensity;
+    }
+    this.mcmc.marginals = [marginal]; // Store as array for consistency with 2D
+  }
+  computeHamiltonianContours(logDensity, qmin, qmax, pmin, pmax, nq, np, nz) {
+    // Compute Hamiltonian H(q,p) = -log(π(q)) + 0.5*p^2 for phase space visualization
+    var q = linspace(qmin, qmax, nq);
+    var p = linspace(pmin, pmax, np);
+    var data = [];
+    var point = zeros(1, 1);
+    var min = 1e10, max = -1e10;
+
+    for (let i = 0; i < nq; ++i) {
+      data.push([]);
+      point[0] = q[i];
+      var logPi = logDensity(point);
+
+      for (let j = 0; j < np; ++j) {
+        var H = -logPi + 0.5 * p[j] * p[j];
+        data[i].push(H);
+        if (H > max) max = H;
+        if (H < min) min = H;
+      }
+    }
+
+    // Create contour levels
+    var z = linspace(min + 0.01 * (max - min), max - 0.02 * (max - min), nz);
+    var c = new Conrec();
+    c.contour(data, 0, nq - 1, 0, np - 1, q, p, nz, z);
+    var contours = c.contourList();
+
+    this.mcmc.hamiltonianContours = [];
+    for (let i = 0; i < contours.length; ++i) {
+      var contour = [];
+      for (let j = 0; j < contours[i].length; ++j) {
+        contour.push([contours[i][j].x, contours[i][j].y]);
+      }
+      this.mcmc.hamiltonianContours.push(contour);
+    }
+
+    this.mcmc.qgrid = q;
+    this.mcmc.pgrid = p;
+    this.mcmc.hamiltonianData = data;
   }
   computeContours(logDensity, xmin, xmax, ymin, ymax, nx, ny, nz) {
     // get contours

@@ -13,7 +13,8 @@ MCMC.registerAlgorithm("HamiltonianMC", {
   },
 
   reset: (self) => {
-    self.chain = [MultivariateNormal.getSample(self.dim)];
+    const initialSample = MultivariateNormal.getSample(self.dim);
+    self.chain = [initialSample];
   },
 
   attachUI: (self, folder) => {
@@ -30,20 +31,30 @@ MCMC.registerAlgorithm("HamiltonianMC", {
     const q = q0.copy();
     const p = p0.copy();
     const trajectory = [q.copy()];
+    const phaseTrajectory = self.dim === 1 ? [{ q: q0[0], p: p0[0] }] : null;
+
     for (let i = 0; i < self.leapfrogSteps; i++) {
       p.increment(self.gradLogDensity(q).scale(self.dt / 2));
       q.increment(p.scale(self.dt));
       p.increment(self.gradLogDensity(q).scale(self.dt / 2));
       trajectory.push(q.copy());
+
+      if (self.dim === 1) {
+        phaseTrajectory.push({ q: q[0], p: p[0] });
+      }
     }
 
     // add integrated trajectory to visualizer animation queue
-    visualizer.queue.push({
+    const proposalEvent = {
       type: "proposal",
       proposal: q,
       trajectory: trajectory,
       initialMomentum: p0,
-    });
+    };
+    if (phaseTrajectory) {
+      proposalEvent.phaseTrajectory = phaseTrajectory;
+    }
+    visualizer.queue.push(proposalEvent);
 
     // calculate acceptance ratio
     const H0 = -self.logDensity(q0) + p0.norm2() / 2;
@@ -53,10 +64,14 @@ MCMC.registerAlgorithm("HamiltonianMC", {
     // accept or reject proposal
     if (Math.random() < Math.exp(logAcceptRatio)) {
       self.chain.push(q.copy());
-      visualizer.queue.push({ type: "accept", proposal: q });
+      const acceptEvent = { type: "accept", proposal: q };
+      if (phaseTrajectory) acceptEvent.phaseTrajectory = phaseTrajectory;
+      visualizer.queue.push(acceptEvent);
     } else {
       self.chain.push(q0.copy());
-      visualizer.queue.push({ type: "reject", proposal: q });
+      const rejectEvent = { type: "reject", proposal: q };
+      if (phaseTrajectory) rejectEvent.phaseTrajectory = phaseTrajectory;
+      visualizer.queue.push(rejectEvent);
     }
   },
 });

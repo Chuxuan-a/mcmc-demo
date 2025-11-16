@@ -32,6 +32,7 @@ MCMC.registerAlgorithm("RAHMC", {
     const q = q0.copy();
     const p = p0.copy();
     const trajectory = [q.copy()];
+    const phaseTrajectory = self.dim === 1 ? [{ q: q0[0], p: p0[0] }] : null;
 
     const L1 = Math.floor(self.leapfrogSteps / 2);
     const L2 = self.leapfrogSteps - L1;
@@ -55,24 +56,30 @@ MCMC.registerAlgorithm("RAHMC", {
     for (let i = 0; i < L1; i++) {
       conformalLeapfrogStep(q, p, -self.gamma);
       trajectory.push(q.copy());
+      if (self.dim === 1) phaseTrajectory.push({ q: q[0], p: p[0] });
     }
 
     // attracting phase (positive friction)
     for (let i = 0; i < L2; i++) {
       conformalLeapfrogStep(q, p, self.gamma);
       trajectory.push(q.copy());
+      if (self.dim === 1) phaseTrajectory.push({ q: q[0], p: p[0] });
     }
 
     // flip momentum (in-place)
     for (let i = 0; i < p.length; i++) p[i] *= -1;
 
     // add trajectory to visualizer animation queue
-    visualizer.queue.push({
+    const proposalEvent = {
       type: "proposal",
       proposal: q,
       trajectory: trajectory,
       initialMomentum: p0,
-    });
+    };
+    if (phaseTrajectory) {
+      proposalEvent.phaseTrajectory = phaseTrajectory;
+    }
+    visualizer.queue.push(proposalEvent);
 
     // calculate acceptance ratio
     const H0 = -self.logDensity(q0) + p0.norm2() / 2;
@@ -82,10 +89,14 @@ MCMC.registerAlgorithm("RAHMC", {
     // accept or reject proposal
     if (Math.random() < Math.exp(logAcceptRatio)) {
       self.chain.push(q.copy());
-      visualizer.queue.push({ type: "accept", proposal: q });
+      const acceptEvent = { type: "accept", proposal: q };
+      if (phaseTrajectory) acceptEvent.phaseTrajectory = phaseTrajectory;
+      visualizer.queue.push(acceptEvent);
     } else {
       self.chain.push(q0.copy());
-      visualizer.queue.push({ type: "reject", proposal: q });
+      const rejectEvent = { type: "reject", proposal: q };
+      if (phaseTrajectory) rejectEvent.phaseTrajectory = phaseTrajectory;
+      visualizer.queue.push(rejectEvent);
     }
   },
 });

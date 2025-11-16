@@ -189,3 +189,39 @@ MCMC.targets["squiggle"] = {
     return grad;
   },
 };
+
+// 1D Standard Normal distribution
+MCMC.targetNames.push("standard1d");
+MCMC.targets["standard1d"] = {
+  xmin: -6,
+  xmax: 6,
+  dim: 1,
+  logDensity: (x) => {
+    return -0.5 * x[0] * x[0] - 0.5 * Math.log(2 * Math.PI);
+  },
+  gradLogDensity: (x) => {
+    return matrix([[-x[0]]]);
+  },
+};
+
+// 1D Mixture distribution
+MCMC.targetNames.push("mixture1d");
+MCMC.targets["mixture1d"] = {
+  xmin: -6,
+  xmax: 6,
+  dim: 1,
+  logDensity: (x) => {
+    const x0 = x[0];
+    const p1 = Math.exp(-0.5 * Math.pow((x0 + 2) / 0.6, 2)) / (0.6 * Math.sqrt(2 * Math.PI));
+    const p2 = Math.exp(-0.5 * Math.pow((x0 - 2) / 0.8, 2)) / (0.8 * Math.sqrt(2 * Math.PI));
+    return Math.log(0.4 * p1 + 0.6 * p2);
+  },
+  gradLogDensity: (x) => {
+    const x0 = x[0];
+    const p1 = Math.exp(-0.5 * Math.pow((x0 + 2) / 0.6, 2)) / (0.6 * Math.sqrt(2 * Math.PI));
+    const p2 = Math.exp(-0.5 * Math.pow((x0 - 2) / 0.8, 2)) / (0.8 * Math.sqrt(2 * Math.PI));
+    const dp1 = -(x0 + 2) / (0.6 * 0.6) * p1;
+    const dp2 = -(x0 - 2) / (0.8 * 0.8) * p2;
+    return matrix([[(0.4 * dp1 + 0.6 * dp2) / (0.4 * p1 + 0.6 * p2)]]);
+  },
+};

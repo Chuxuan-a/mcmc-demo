@@ -3,6 +3,7 @@
 class Visualizer {
   constructor(canvas, xHistCanvas, yHistCanvas) {
     this.canvas = canvas;
+    this.phaseCanvas = document.getElementById("phaseCanvas");
     this.xHistCanvas = xHistCanvas;
     this.yHistCanvas = yHistCanvas;
 
@@ -31,12 +32,35 @@ class Visualizer {
     this.histBins = 50;
     this.histFillStyle = "#69b";
 
+    // Phase space mode settings
+    this.phaseSpaceMode = false;
+    this.pmin = -2.5; // momentum range for better contour visibility
+    this.pmax = 2.5;
+    this.targetDensityHeight = 0.25; // Height ratio for target density in overlaid mode
+
     // offscreen canvases to avoid expensive redraws
     this.densityCanvas = document.createElement("canvas");
     this.samplesCanvas = document.createElement("canvas");
     this.overlayCanvas = document.createElement("canvas");
     this.xHistCanvas = document.createElement("canvas");
     this.yHistCanvas = document.createElement("canvas");
+
+    // Phase space offscreen canvases
+    this.phaseDensityCanvas = document.createElement("canvas");
+    this.phaseSamplesCanvas = document.createElement("canvas");
+    this.phaseOverlayCanvas = document.createElement("canvas");
+    this.phaseHistCanvas = document.createElement("canvas");
+  }
+  setPhaseSpaceMode(enabled) {
+    this.phaseSpaceMode = enabled;
+    const container = document.getElementById("canvasContainer");
+    if (enabled) {
+      container.classList.add("phase-space-mode");
+      this.phaseCanvas.style.display = "block";
+    } else {
+      container.classList.remove("phase-space-mode");
+      this.phaseCanvas.style.display = "none";
+    }
   }
   resize() {
     var height = document.body.clientHeight;
@@ -45,9 +69,16 @@ class Visualizer {
     var histogramSize = Math.min(height, width) * this.histogramRatio;
 
     // resize canvas to fit window and scale by devicePixelRatio for HiDPI displays
-    this.canvas.width = document.body.clientWidth * window.devicePixelRatio;
-    this.canvas.height = document.body.clientHeight * window.devicePixelRatio;
+    this.canvas.width = width * window.devicePixelRatio;
+    this.canvas.height = height * window.devicePixelRatio;
     this.canvas.style.zoom = 1 / window.devicePixelRatio;
+
+    // resize phase canvas if in phase space mode
+    if (this.phaseSpaceMode) {
+      this.phaseCanvas.width = width * window.devicePixelRatio;
+      this.phaseCanvas.height = height * window.devicePixelRatio;
+      this.phaseCanvas.style.zoom = 1 / window.devicePixelRatio;
+    }
 
     this.xHistCanvas.width = this.canvas.width;
     this.xHistCanvas.height = histogramSize * window.devicePixelRatio;
@@ -72,6 +103,28 @@ class Visualizer {
     this.overlayCanvas.width = this.canvas.width;
     this.overlayCanvas.height = this.canvas.height;
 
+    // resize phase space offscreen canvases
+    if (this.phaseSpaceMode) {
+      this.phaseDensityCanvas.width = this.phaseCanvas.width;
+      this.phaseDensityCanvas.height = this.phaseCanvas.height;
+      this.phaseSamplesCanvas.width = this.phaseCanvas.width;
+      this.phaseSamplesCanvas.height = this.phaseCanvas.height;
+      this.phaseOverlayCanvas.width = this.phaseCanvas.width;
+      this.phaseOverlayCanvas.height = this.phaseCanvas.height;
+
+      // Phase histogram canvas (same size as xHistCanvas for consistency)
+      this.phaseHistCanvas.width = this.phaseCanvas.width;
+      this.phaseHistCanvas.height = histogramSize * window.devicePixelRatio;
+
+      // Set up phase space coordinate system
+      // Use full canvas height for phase space
+      this.phaseScale = Math.min(
+        this.phaseCanvas.width / (this.xmax - this.xmin),
+        this.phaseCanvas.height / (this.pmax - this.pmin)
+      );
+      this.phaseOrigin = new Float64Array([this.phaseCanvas.width / 2, this.phaseCanvas.height / 2]);
+    }
+
     this.fontSizePx = (12 * window.devicePixelRatio) | 0;
     var context = this.canvas.getContext("2d");
     context.textBaseline = "top";
@@ -79,6 +132,11 @@ class Visualizer {
     context = this.overlayCanvas.getContext("2d");
     context.textBaseline = "top";
     context.font = "" + this.fontSizePx + "px Arial";
+    if (this.phaseSpaceMode) {
+      context = this.phaseOverlayCanvas.getContext("2d");
+      context.textBaseline = "top";
+      context.font = "" + this.fontSizePx + "px Arial";
+    }
     this.reset();
   }
   reset() {
@@ -91,8 +149,21 @@ class Visualizer {
     this.samplesCanvas.getContext("2d").clearRect(0, 0, this.samplesCanvas.width, this.samplesCanvas.height);
     this.overlayCanvas.getContext("2d").clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
     this.canvas.getContext("2d").clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // clear phase space canvases
+    if (this.phaseSpaceMode) {
+      this.phaseDensityCanvas.getContext("2d").clearRect(0, 0, this.phaseDensityCanvas.width, this.phaseDensityCanvas.height);
+      this.phaseSamplesCanvas.getContext("2d").clearRect(0, 0, this.phaseSamplesCanvas.width, this.phaseSamplesCanvas.height);
+      this.phaseOverlayCanvas.getContext("2d").clearRect(0, 0, this.phaseOverlayCanvas.width, this.phaseOverlayCanvas.height);
+      this.phaseCanvas.getContext("2d").clearRect(0, 0, this.phaseCanvas.width, this.phaseCanvas.height);
+    }
+
     // redraw density contours
     this.drawDensityContours();
+    // redraw phase space Hamiltonian contours
+    if (this.phaseSpaceMode) {
+      this.drawHamiltonianContours();
+    }
     // redraw histogram
     this.drawHistograms();
     this.render();
@@ -113,12 +184,107 @@ class Visualizer {
       context.drawImage(this.samplesCanvas, 0, 0);
     }
     // draw histogram canvases
-    if (this.showHistograms) {
+    if (this.showHistograms && !this.phaseSpaceMode) {
       context.drawImage(this.xHistCanvas, 0, this.canvas.height - this.xHistCanvas.height);
       context.drawImage(this.yHistCanvas, 0, 0);
     }
     // draw overlay canvas
     context.drawImage(this.overlayCanvas, 0, 0);
+
+    // Render phase space canvas
+    if (this.phaseSpaceMode) {
+      this.renderPhaseSpace();
+    }
+  }
+  renderPhaseSpace() {
+    var phaseContext = this.phaseCanvas.getContext("2d");
+    phaseContext.clearRect(0, 0, this.phaseCanvas.width, this.phaseCanvas.height);
+    phaseContext.globalCompositeOperation = "source-over";
+
+    // Draw Hamiltonian contours
+    if (this.showTargetDensity) {
+      phaseContext.drawImage(this.phaseDensityCanvas, 0, 0);
+    }
+    phaseContext.globalCompositeOperation = "multiply";
+
+    // Draw phase space samples
+    if (this.showSamples) {
+      phaseContext.drawImage(this.phaseSamplesCanvas, 0, 0);
+    }
+
+    // Draw histogram at bottom (following exact pattern from 2D - line 185)
+    if (this.showHistograms) {
+      phaseContext.drawImage(this.phaseHistCanvas, 0, this.phaseCanvas.height - this.phaseHistCanvas.height);
+    }
+
+    // Draw phase space overlay
+    phaseContext.drawImage(this.phaseOverlayCanvas, 0, 0);
+
+    // Draw axes labels
+    phaseContext.globalCompositeOperation = "source-over";
+    phaseContext.fillStyle = "#000";
+    phaseContext.font = "" + (16 * window.devicePixelRatio) + "px Arial";
+    phaseContext.globalAlpha = 1.0;
+
+    phaseContext.fillText("Position (q)", this.phaseCanvas.width / 2 - 40 * window.devicePixelRatio, this.phaseCanvas.height - 10 * window.devicePixelRatio);
+
+    phaseContext.save();
+    phaseContext.translate(20 * window.devicePixelRatio, this.phaseCanvas.height / 2);
+    phaseContext.rotate(-Math.PI / 2);
+    phaseContext.fillText("Momentum (p)", -50 * window.devicePixelRatio, 0);
+    phaseContext.restore();
+  }
+  drawPhaseHistogram() {
+    // Draw 1D histogram and marginal curve (following exact pattern from drawHistograms lines 349-390)
+    if (!this.simulation.mcmc.initialized) return;
+    var chain = this.simulation.mcmc.chain;
+    var has_weights = this.simulation.mcmc.hasOwnProperty("chain_weights");
+
+    var xhist = new Uint16Array(this.histBins);
+
+    // Compute histogram
+    for (var i = 0; i < chain.length; ++i) {
+      var weight = 1;
+      var x = chain[i][0];
+      if (has_weights) {
+        weight = this.simulation.mcmc.chain_weights[i] * chain.length;
+      }
+      var xind = ((x - this.xmin) / (this.xmax - this.xmin)) * this.histBins;
+      if (xind > 0 && xind < this.histBins) xhist[xind | 0] += weight;
+    }
+
+    var xmax = 0;
+    for (var i = 0; i < this.histBins; ++i) {
+      if (xhist[i] > xmax) xmax = xhist[i];
+    }
+
+    this.phaseHistCanvas.getContext("2d").clearRect(0, 0, this.phaseHistCanvas.width, this.phaseHistCanvas.height);
+
+    // Draw histogram bars (using phase space coordinate transform for alignment)
+    var context = this.phaseHistCanvas.getContext("2d");
+    context.globalAlpha = 0.3;
+    context.fillStyle = this.histFillStyle;
+    var binWidth = (this.xmax - this.xmin) / this.histBins;
+    var dx = binWidth * this.phaseScale;
+    for (var i = 0; i < this.histBins; ++i) {
+      var binLeft = this.xmin + i * binWidth;
+      var x = binLeft * this.phaseScale + this.phaseOrigin[0];
+      var y = (1.0 / xmax) * xhist[i] * this.phaseHistCanvas.height;
+      context.fillRect(x, this.phaseHistCanvas.height, dx, -y);
+    }
+
+    // Draw marginal density curve
+    context.strokeStyle = this.histFillStyle;
+    context.lineWidth = 1 * window.devicePixelRatio;
+    var xgrid = this.simulation.mcmc.xgrid;
+    var xmarg = this.simulation.mcmc.marginals[0];
+    context.beginPath();
+    context.moveTo(0, this.phaseHistCanvas.height);
+    for (var i = 1; i < xgrid.length; ++i) {
+      var x = xgrid[i] * this.phaseScale + this.phaseOrigin[0];
+      context.lineTo(x, (1 - 0.97 * xmarg[i]) * this.phaseHistCanvas.height);
+    }
+    context.stroke();
   }
   // transform world-coordinate to pixel coordinate
   transform(x) {
@@ -127,8 +293,22 @@ class Visualizer {
     transformed[1] = this.origin[1] - this.scale * (x[1] - this.yOffset);
     return transformed;
   }
+  // transform phase space (q, p) coordinates to pixel coordinate
+  transformPhase(q, p) {
+    var transformed = new Float64Array(2);
+    transformed[0] = q * this.phaseScale + this.phaseOrigin[0];
+    transformed[1] = this.phaseOrigin[1] - p * this.phaseScale;
+    return transformed;
+  }
   drawHistograms(options) {
     if (!this.simulation.mcmc.initialized) return;
+
+    // In phase space mode, draw phase histogram instead (1D histogram + marginal)
+    if (this.phaseSpaceMode) {
+      this.drawPhaseHistogram();
+      return;
+    }
+
     var chain = this.simulation.mcmc.chain;
     var has_weights = this.simulation.mcmc.hasOwnProperty("chain_weights");
     // this.histBins = Math.min(125, Math.floor(chain.length / 50) + 10);
@@ -328,6 +508,16 @@ class Visualizer {
           color: this.proposalColor,
           lw: 1,
         });
+      }
+
+      // draw phase space trajectory if in phase space mode
+      if (this.phaseSpaceMode && event.hasOwnProperty("phaseTrajectory")) {
+        this.drawPhaseTrajectory(event.phaseTrajectory);
+      }
+
+      // draw NUTS phase space trajectory
+      if (this.phaseSpaceMode && event.hasOwnProperty("nutsPhaseTrajectory")) {
+        this.drawNUTSPhaseTrajectory(event.nutsPhaseTrajectory);
       }
 
       if (event.hasOwnProperty("epsilon")) {
@@ -629,6 +819,13 @@ class Visualizer {
         lw: 2,
       });
       this.drawSample(this.samplesCanvas, event.proposal);
+
+      // Draw accept arrow in phase space if in phase space mode
+      if (this.phaseSpaceMode && event.hasOwnProperty("phaseTrajectory")) {
+        this.drawPhaseAcceptReject(event.phaseTrajectory, true);
+        this.drawPhaseSample(event.proposal);
+      }
+
       this.drawHistograms();
     }
 
@@ -640,6 +837,13 @@ class Visualizer {
         lw: 2,
       });
       this.drawSample(this.samplesCanvas, last);
+
+      // Draw reject arrow in phase space if in phase space mode
+      if (this.phaseSpaceMode && event.hasOwnProperty("phaseTrajectory")) {
+        this.drawPhaseAcceptReject(event.phaseTrajectory, false);
+        this.drawPhaseSample(last);
+      }
+
       this.drawHistograms();
     }
 
@@ -730,8 +934,199 @@ class Visualizer {
     // this.drawArrow(canvas, { from: last, to: last.add(eigs[0]), color: 'rgba(192,192,192,' +  this.alpha + ')', lw: 1 });
     // this.drawArrow(canvas, { from: last, to: last.add(eigs[1]), color: 'rgba(192,192,192,' +  this.alpha + ')', lw: 1 });
   }
+  draw1DDensity() {
+    // Draw 1D density curve for target space visualization
+    var context = this.densityCanvas.getContext("2d");
+    var xgrid = this.simulation.mcmc.xgrid;
+    var densityValues = this.simulation.mcmc.density1d;
+
+    if (!densityValues || !xgrid) return;
+
+    // Find max density for scaling
+    var maxDensity = 0;
+    for (var i = 0; i < densityValues.length; ++i) {
+      if (densityValues[i] > maxDensity) maxDensity = densityValues[i];
+    }
+
+    // Draw density curve
+    context.strokeStyle = this.contourColor;
+    context.fillStyle = this.contourColor;
+    context.globalAlpha = 0.3;
+    context.lineWidth = 2 * window.devicePixelRatio;
+
+    // Draw filled area under curve
+    context.beginPath();
+    var scaleFactor = this.canvas.height * 0.6; // Use 60% of canvas height
+    var baseline = this.canvas.height * 0.8; // Baseline at 80% down
+
+    context.moveTo(0, baseline);
+    for (var i = 0; i < xgrid.length; ++i) {
+      var x = xgrid[i] * this.scale + this.origin[0];
+      var y = baseline - (densityValues[i] / maxDensity) * scaleFactor;
+      context.lineTo(x, y);
+    }
+    context.lineTo(this.canvas.width, baseline);
+    context.closePath();
+    context.fill();
+
+    // Draw curve outline
+    context.globalAlpha = 0.8;
+    context.beginPath();
+    for (var i = 0; i < xgrid.length; ++i) {
+      var x = xgrid[i] * this.scale + this.origin[0];
+      var y = baseline - (densityValues[i] / maxDensity) * scaleFactor;
+      if (i === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    }
+    context.stroke();
+    context.globalAlpha = 1.0;
+  }
+  drawHamiltonianContours() {
+    // Draw Hamiltonian contours in phase space
+    if (!this.simulation.mcmc.initialized) return;
+    if (!this.simulation.mcmc.hamiltonianContours) return;
+
+    var context = this.phaseDensityCanvas.getContext("2d");
+
+    // Draw contour lines with gradient
+    for (var i = 0; i < this.simulation.mcmc.hamiltonianContours.length; ++i) {
+      var alpha = (0.5 * (i + 1)) / this.simulation.mcmc.hamiltonianContours.length;
+      var contour = this.simulation.mcmc.hamiltonianContours[i];
+
+      context.strokeStyle = this.contourColor;
+      context.globalAlpha = alpha;
+      context.lineWidth = 1 * window.devicePixelRatio;
+      context.beginPath();
+
+      for (var j = 0; j < contour.length; ++j) {
+        var q = contour[j][0];
+        var p = contour[j][1];
+        var pixel = this.transformPhase(q, p);
+
+        if (j === 0) context.moveTo(pixel[0], pixel[1]);
+        else context.lineTo(pixel[0], pixel[1]);
+      }
+      context.stroke();
+    }
+    context.globalAlpha = 1.0;
+  }
+  drawPhaseTrajectory(phaseTrajectory) {
+    // Draw trajectory in phase space
+    var context = this.phaseOverlayCanvas.getContext("2d");
+
+    // Clear previous phase trajectory
+    context.clearRect(0, 0, this.phaseOverlayCanvas.width, this.phaseOverlayCanvas.height);
+
+    context.strokeStyle = this.trajectoryColor;
+    context.lineWidth = 1 * window.devicePixelRatio;
+    context.globalAlpha = 1;
+
+    // Draw the trajectory curve
+    context.beginPath();
+    for (var i = 0; i < phaseTrajectory.length; ++i) {
+      var pixel = this.transformPhase(phaseTrajectory[i].q, phaseTrajectory[i].p);
+      if (i === 0) context.moveTo(pixel[0], pixel[1]);
+      else context.lineTo(pixel[0], pixel[1]);
+    }
+    context.stroke();
+
+    // Draw ALL points along trajectory (following exact pattern from 2D - line 617-624)
+    for (var i = 0; i < phaseTrajectory.length - 1; ++i) {
+      var pixel = this.transformPhase(phaseTrajectory[i].q, phaseTrajectory[i].p);
+      context.fillStyle = this.trajectoryColor;
+      context.beginPath();
+      context.arc(pixel[0], pixel[1], 0.02 * this.phaseScale, 0, 2 * Math.PI);
+      context.fill();
+    }
+
+    context.globalAlpha = 1.0;
+  }
+  drawPhaseAcceptReject(phaseTrajectory, isAccept) {
+    // Draw accept/reject arrow in phase space (following exact pattern from 2D - lines 821-854)
+    var context = this.phaseOverlayCanvas.getContext("2d");
+
+    // Get start and end points from trajectory
+    var startPoint = phaseTrajectory[0];
+    var endPoint = phaseTrajectory[phaseTrajectory.length - 1];
+
+    var fromPixel = this.transformPhase(startPoint.q, startPoint.p);
+    var toPixel = this.transformPhase(endPoint.q, endPoint.p);
+
+    // Draw arrow from start to end
+    var color = isAccept ? this.acceptColor : this.rejectColor;
+    context.strokeStyle = color;
+    context.lineWidth = 2 * window.devicePixelRatio;
+    context.globalAlpha = 1;
+
+    context.beginPath();
+    context.moveTo(fromPixel[0], fromPixel[1]);
+    context.lineTo(toPixel[0], toPixel[1]);
+
+    // Draw arrow head
+    var t = Math.atan2(toPixel[1] - fromPixel[1], toPixel[0] - fromPixel[0]) + Math.PI;
+    var size = this.arrowSize * window.devicePixelRatio;
+    context.moveTo(toPixel[0] + size * Math.cos(t + Math.PI / 8), toPixel[1] + size * Math.sin(t + Math.PI / 8));
+    context.lineTo(toPixel[0], toPixel[1]);
+    context.lineTo(toPixel[0] + size * Math.cos(t - Math.PI / 8), toPixel[1] + size * Math.sin(t - Math.PI / 8));
+    context.stroke();
+
+    context.globalAlpha = 1.0;
+  }
+  drawPhaseSample(center) {
+    // Draw sample point in phase space (following exact pattern from 2D - line 472-482)
+    var context = this.phaseSamplesCanvas.getContext("2d");
+    context.globalCompositeOperation = "multiply";
+
+    var pixel = this.transformPhase(center[0], 0); // Only position matters for 1D
+    context.fillStyle = "rgb(216,216,216)";
+    context.beginPath();
+    context.arc(pixel[0], pixel[1], 0.02 * this.phaseScale, 0, 2 * Math.PI);
+    context.fill();
+
+    context.globalCompositeOperation = "source-over";
+  }
+  drawNUTSPhaseTrajectory(nutsPhaseTrajectory) {
+    // Draw NUTS tree exploration in phase space
+    var context = this.phaseOverlayCanvas.getContext("2d");
+
+    // Clear previous phase trajectory
+    context.clearRect(0, 0, this.phaseOverlayCanvas.width, this.phaseOverlayCanvas.height);
+
+    // Draw all trajectory segments
+    for (var i = 0; i < nutsPhaseTrajectory.length; ++i) {
+      var seg = nutsPhaseTrajectory[i];
+      var color = seg.type === "accept" ? this.nutsColor : this.rejectColor;
+      var alpha = seg.type === "accept" ? 0.6 : 0.3;
+
+      var fromPixel = this.transformPhase(seg.q0, seg.p0);
+      var toPixel = this.transformPhase(seg.q, seg.p);
+
+      context.strokeStyle = color;
+      context.lineWidth = 1.5 * window.devicePixelRatio;
+      context.globalAlpha = alpha;
+
+      context.beginPath();
+      context.moveTo(fromPixel[0], fromPixel[1]);
+      context.lineTo(toPixel[0], toPixel[1]);
+      context.stroke();
+
+      // Draw point at end
+      context.fillStyle = color;
+      context.beginPath();
+      context.arc(toPixel[0], toPixel[1], 2 * window.devicePixelRatio, 0, 2 * Math.PI);
+      context.fill();
+    }
+
+    context.globalAlpha = 1.0;
+  }
   drawDensityContours() {
     if (!this.simulation.mcmc.initialized) return;
+
+    // For 1D targets, draw density curve instead of contours
+    if (this.phaseSpaceMode && this.simulation.mcmc.dim === 1) {
+      this.draw1DDensity();
+      return;
+    }
 
     for (var i = 0; i < this.simulation.mcmc.contours.length; ++i) {
       var alpha = (0.5 * (i + 1)) / this.simulation.mcmc.contours.length;
